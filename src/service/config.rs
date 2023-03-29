@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
+    pub root: PathBuf,
     pub service: ServerOption,
     pub tls: Option<TlsConfig>,
 }

@@ -18,6 +18,8 @@ netxserver = { version = "1.8", features = ["use_rustls"] }
 async-trait = "0.1"
 tokio-rustls = "0.23"
 rustls-pemfile = "1"
+aqueue = "1.2"
+
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.6"

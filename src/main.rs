@@ -1,8 +1,11 @@
 mod controller;
+pub mod file_store_manager;
 mod service;
+mod static_ref;
 
 use crate::controller::ImplCreateController;
-use anyhow::ensure;
+use crate::file_store_manager::{FileStoreManager, FILE_STORE_MANAGER};
+use anyhow::{anyhow, ensure};
 use netxserver::prelude::NetXServer;
 use rustls_pemfile::{certs, rsa_private_keys};
 use std::fs::File;
@@ -40,6 +43,10 @@ fn main() -> anyhow::Result<()> {
 async fn start(config_file: PathBuf) -> anyhow::Result<()> {
     let config = service::config::Config::try_from(config_file)?;
     log::trace!("load config info:{:#?}", config);
+    FILE_STORE_MANAGER
+        .set(FileStoreManager::new(config.root)?)
+        .map_err(|err| anyhow!("init file store manager error:{}", err))?;
+
     if let Some(ref tls) = config.tls {
         let cert_path = if tls.cert.exists() && tls.cert.is_absolute() {
             tls.cert.clone()

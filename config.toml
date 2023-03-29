@@ -1,3 +1,6 @@
+root="./store"
+
+
 [service]
 # the local IP address and port that the service listens on.
 addr = "0.0.0.0:7556"
