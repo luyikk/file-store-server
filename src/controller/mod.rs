@@ -26,13 +26,20 @@ pub trait IFileStoreService {
     /// return: file write key
     #[tag(1001)]
     async fn push(&self, filename: String, size: u64, sha256: String) -> anyhow::Result<u64>;
-
+    /// write data to file
+    /// key: file push key
+    /// data: file data
+    #[tag(1002)]
+    async fn write(&self, key: u64, data: Vec<u8>) -> anyhow::Result<()>;
     /// write data to file
     /// key: file push key
     /// offset: file offset write position
     /// data: file data
-    #[tag(1002)]
-    async fn write(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()>;
+    #[tag(1003)]
+    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()>;
+    /// finish write
+    #[tag(1004)]
+    async fn push_finish(&self, key: u64) -> anyhow::Result<()>;
 }
 
 pub struct FileStoreService {
@@ -82,8 +89,18 @@ impl IFileStoreService for FileStoreService {
     }
 
     #[inline]
-    async fn write(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()> {
-        self.file_store.write(key, offset, &data).await
+    async fn write(&self, key: u64, data: Vec<u8>) -> anyhow::Result<()> {
+        self.file_store.write(key, &data).await
+    }
+
+    #[inline]
+    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()> {
+        self.file_store.write_offset(key, offset, &data).await
+    }
+
+    #[inline]
+    async fn push_finish(&self, key: u64) -> anyhow::Result<()> {
+        self.file_store.finish(key).await
     }
 }
 

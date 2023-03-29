@@ -1,7 +1,7 @@
 mod controller;
 pub mod file_store_manager;
 mod service;
-mod static_ref;
+
 
 use crate::controller::ImplCreateController;
 use crate::file_store_manager::{FileStoreManager, FILE_STORE_MANAGER};
