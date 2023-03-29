@@ -14,7 +14,7 @@ pub fn install_logger() -> anyhow::Result<()> {
     let mut current_exec_path = super::io::get_current_exec_path()?;
     current_exec_path.push("logs");
 
-    let logger = Logger::try_with_str("trace, mio=error")?
+    let logger = Logger::try_with_str("trace, mio=error, rustls=debug")?
         .log_to_file_and_writer(
             FileSpec::default()
                 .directory(current_exec_path)

@@ -1,3 +1,4 @@
+use netxserver::prelude::ServerOption;
 use serde::Deserialize;
 use std::io;
 use std::io::ErrorKind;
@@ -5,7 +6,15 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
-    pub listen: String,
+    pub service: ServerOption,
+    pub tls: Option<TlsConfig>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TlsConfig {
+    pub ca: Option<PathBuf>,
+    pub cert: PathBuf,
+    pub key: PathBuf,
 }
 
 impl TryFrom<PathBuf> for Config {
