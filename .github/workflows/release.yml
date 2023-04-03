@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+      tags:
+        - v[0-9]+.*
+
+jobs:
+  create-release:
+     name: Create GitHub release
+     runs-on: ubuntu-latest
+     steps:
+      - uses: actions/checkout@v3
+        with:
+           persist-credentials: false
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: "CHANGELOG.md"
+          branch: master
+          title: "fss $version"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  
+  upload-bins:
+    name: "Upload release binaries"
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-18.04
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: fss
+          target: ${{ matrix.target }}
+          features: ${{ matrix.features || '' }}
+          archive: $bin-$target-${{ matrix.os }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
