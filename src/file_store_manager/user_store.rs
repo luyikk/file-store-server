@@ -25,7 +25,7 @@ impl UserStore {
     pub fn new(root: PathBuf) -> Actor<UserStore> {
         Actor::new(UserStore {
             root,
-            writes: Default::default(),
+            writes: HashMap::new(),
         })
     }
 
