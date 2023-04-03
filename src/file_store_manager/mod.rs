@@ -7,7 +7,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::sync::OnceCell;
 
 pub static FILE_STORE_MANAGER: OnceCell<Actor<FileStoreManager>> = OnceCell::const_new();
@@ -48,14 +48,14 @@ impl FileStoreManager {
     }
 
     /// create file write key
-    pub fn create_write_key(&mut self, filename: &PathBuf) -> anyhow::Result<u64> {
+    pub fn create_write_key(&mut self, filename: &Path) -> anyhow::Result<u64> {
         let key = {
             let mut hasher = DefaultHasher::new();
             filename.hash(&mut hasher);
             hasher.finish()
         };
         ensure!(
-            self.writes.contains(&key),
+            !self.writes.contains(&key),
             "file is being uploaded:{:?}",
             filename
         );
@@ -74,7 +74,7 @@ pub trait IFileStoreManager {
     /// create new store
     fn new_user_store(&self) -> Actor<UserStore>;
     /// create file write key
-    async fn create_write_key(&self, filename: &PathBuf) -> anyhow::Result<u64>;
+    async fn create_write_key(&self, filename: &Path) -> anyhow::Result<u64>;
     /// finish write key
     async fn finish_write_key(&self, key: u64);
 }
@@ -85,7 +85,7 @@ impl IFileStoreManager for Actor<FileStoreManager> {
         unsafe { self.deref_inner().new_user_store() }
     }
 
-    async fn create_write_key(&self, filename: &PathBuf) -> anyhow::Result<u64> {
+    async fn create_write_key(&self, filename: &Path) -> anyhow::Result<u64> {
         self.inner_call(|inner| async move { inner.get_mut().create_write_key(filename) })
             .await
     }

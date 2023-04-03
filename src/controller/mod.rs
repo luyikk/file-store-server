@@ -21,11 +21,11 @@ pub trait IFileStoreService {
     ///
     /// size: file size u64
     ///
-    /// sha256: file sha256
+    /// sha1: file sha1
     ///
     /// return: file write key
     #[tag(1001)]
-    async fn push(&self, filename: String, size: u64, sha256: String) -> anyhow::Result<u64>;
+    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64>;
     /// write data to file
     /// key: file push key
     /// data: file data
@@ -36,7 +36,7 @@ pub trait IFileStoreService {
     /// offset: file offset write position
     /// data: file data
     #[tag(1003)]
-    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()>;
+    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>);
     /// finish write
     #[tag(1004)]
     async fn push_finish(&self, key: u64) -> anyhow::Result<()>;
@@ -80,12 +80,13 @@ impl IFileStoreService for FileStoreService {
     #[inline]
     async fn closed(&self) -> anyhow::Result<()> {
         log::info!("client session {} closed", self.token.get_session_id());
+        self.file_store.clear().await?;
         Ok(())
     }
 
     #[inline]
-    async fn push(&self, filename: String, size: u64, sha256: String) -> anyhow::Result<u64> {
-        self.file_store.push(filename, size, sha256).await
+    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64> {
+        self.file_store.push(filename, size, sha1).await
     }
 
     #[inline]
@@ -94,8 +95,10 @@ impl IFileStoreService for FileStoreService {
     }
 
     #[inline]
-    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>) -> anyhow::Result<()> {
-        self.file_store.write_offset(key, offset, &data).await
+    async fn write_offset(&self, key: u64, offset: u64, data: Vec<u8>) {
+        if let Err(err) = self.file_store.write_offset(key, offset, &data).await {
+            log::error!("write_offset key:{key} offset:{offset}  error:{err}");
+        }
     }
 
     #[inline]

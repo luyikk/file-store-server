@@ -2,7 +2,6 @@ mod controller;
 pub mod file_store_manager;
 mod service;
 
-
 use crate::controller::ImplCreateController;
 use crate::file_store_manager::{FileStoreManager, FILE_STORE_MANAGER};
 use anyhow::{anyhow, ensure};
@@ -47,9 +46,9 @@ async fn start(config_file: PathBuf) -> anyhow::Result<()> {
         .set(FileStoreManager::new(config.root)?)
         .map_err(|err| anyhow!("init file store manager error:{}", err))?;
 
-    if let Some(ref tls) = config.tls {
+    if let Some(tls) = config.tls {
         let cert_path = if tls.cert.exists() && tls.cert.is_absolute() {
-            tls.cert.clone()
+            tls.cert
         } else {
             let mut current_exec_path = service::io::get_current_exec_path()?;
             current_exec_path.push(&tls.cert);
@@ -62,7 +61,7 @@ async fn start(config_file: PathBuf) -> anyhow::Result<()> {
         };
 
         let key_path = if tls.key.exists() && tls.key.is_absolute() {
-            tls.key.clone()
+            tls.key
         } else {
             let mut current_exec_path = service::io::get_current_exec_path()?;
             current_exec_path.push(&tls.key);
@@ -74,9 +73,9 @@ async fn start(config_file: PathBuf) -> anyhow::Result<()> {
             current_exec_path
         };
 
-        let tls_acceptor = if let Some(ref ca) = tls.ca {
+        let tls_acceptor = if let Some(ca) = tls.ca {
             let ca_path = if ca.exists() && ca.is_absolute() {
-                ca.clone()
+                ca
             } else {
                 let mut current_exec_path = service::io::get_current_exec_path()?;
                 current_exec_path.push(ca);
