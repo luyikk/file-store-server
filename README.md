@@ -2,7 +2,7 @@
 
 make config
 ```sh 
-    fss create
+fss create
 ```
 
 ```toml
@@ -41,25 +41,25 @@ key = "./tls/server-key.pem"
 
 exec
 ```shell
-   fss exec
+fss exec
 ```
 
 service install 
 ```shell
-   fss service install
+fss service install
 ```
 
 service start
 ```shell
-   fss service start
+fss service start
 ```
 
 service stop
 ```shell
-   fss service stop
+fss service stop
 ```
 
 service uninstall
 ```shell
-   fss service uninstall
+fss service uninstall
 ```
