@@ -49,7 +49,7 @@ impl UserStore {
         let path = c_path?;
 
         if !path.starts_with(&self.root) {
-            log::error!("file path error:{}->{:?}", filename, path);
+            log::error!("file path error root:{} file:{}->{:?}",&self.root.to_string_lossy(), filename, path.to_string_lossy());
             bail!("file path error:{}", filename)
         }
 
