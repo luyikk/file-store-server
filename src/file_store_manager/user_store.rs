@@ -41,7 +41,7 @@ impl UserStore {
             path
         );
         ensure!(!path.exists(), "file already exist:{}", filename);
-        let key = crate::FILE_STORE_MANAGER
+        let key = FILE_STORE_MANAGER
             .get()
             .unwrap()
             .create_write_key(&path)
