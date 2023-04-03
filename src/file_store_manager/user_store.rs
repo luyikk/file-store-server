@@ -17,7 +17,7 @@ pub struct UserStore {
 /// file write handle
 pub struct FileWriteHandle {
     path: PathBuf,
-    sha1: String,
+    hash: String,
     fd: File,
 }
 
@@ -31,8 +31,8 @@ impl UserStore {
 
     /// create push file
     #[inline]
-    async fn push(&mut self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64> {
-        log::trace!("push:{filename}  size:{size}B  sha1:{sha1}");
+    async fn push(&mut self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
+        log::trace!("push:{filename}  size:{size}B  hash:{hash}");
 
         let path = self.root.join(&filename);
         log::trace!("save path:{}", path.to_string_lossy());
@@ -62,7 +62,7 @@ impl UserStore {
         let fd = File::create(&path).await?;
         fd.set_len(size).await?;
         log::debug!("make push:{} key:{}", path.to_string_lossy(), key);
-        self.writes.insert(key, FileWriteHandle { path, sha1, fd });
+        self.writes.insert(key, FileWriteHandle { path, hash, fd });
         Ok(key)
     }
 
@@ -108,10 +108,9 @@ impl UserStore {
 
             //handle.fd.seek(SeekFrom::Start(0)).await?;
 
-            let c_sha1 = {
-                use sha1::Digest;
-                let mut sha = sha1::Sha1::new();
-                let mut data = vec![0; 1024 * 1024];
+            let c_hash = {
+                let mut sha = blake3::Hasher::new();
+                let mut data = vec![0; 512 * 1024];
                 let mut file = File::open(&handle.path).await?;
                 while let Ok(len) = file.read(&mut data).await {
                     if len > 0 {
@@ -120,16 +119,16 @@ impl UserStore {
                         break;
                     }
                 }
-                hex::encode(sha.finalize())
+                hex::encode(sha.finalize().as_bytes())
             };
 
-            let t_sha1 = handle.sha1.clone();
+            let t_hash = handle.hash.clone();
             let path = handle.path.clone();
             drop(handle);
-            log::debug!("eq c_sha1:{c_sha1} t_sha1:{t_sha1}");
-            if c_sha1 != t_sha1 {
+            log::debug!("eq c_hash:{c_hash} t_hash:{t_hash}");
+            if c_hash != t_hash {
                 tokio::fs::remove_file(path).await?;
-                bail!("sha1 error:{c_sha1} != {t_sha1}");
+                bail!("BLAKE3  error:{c_hash} != {t_hash}");
             }
             path
         };
@@ -164,7 +163,7 @@ impl UserStore {
 #[async_trait::async_trait]
 pub trait IUserStore {
     /// create push file
-    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64>;
+    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64>;
     /// write data to file
     async fn write(&self, key: u64, data: &[u8]) -> anyhow::Result<()>;
     /// write file buff
@@ -178,8 +177,8 @@ pub trait IUserStore {
 #[async_trait::async_trait]
 impl IUserStore for Actor<UserStore> {
     #[inline]
-    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64> {
-        self.inner_call(|inner| async move { inner.get_mut().push(filename, size, sha1).await })
+    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
+        self.inner_call(|inner| async move { inner.get_mut().push(filename, size, hash).await })
             .await
     }
 

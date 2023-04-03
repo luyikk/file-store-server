@@ -21,11 +21,11 @@ pub trait IFileStoreService {
     ///
     /// size: file size u64
     ///
-    /// sha1: file sha1
+    /// hash: file BLAKE3
     ///
     /// return: file write key
     #[tag(1001)]
-    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64>;
+    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64>;
     /// write data to file
     /// key: file push key
     /// data: file data
@@ -85,8 +85,8 @@ impl IFileStoreService for FileStoreService {
     }
 
     #[inline]
-    async fn push(&self, filename: String, size: u64, sha1: String) -> anyhow::Result<u64> {
-        self.file_store.push(filename, size, sha1).await
+    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
+        self.file_store.push(filename, size, hash).await
     }
 
     #[inline]
