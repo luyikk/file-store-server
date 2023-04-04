@@ -64,7 +64,11 @@ impl UserStore {
             .create_write_key(&path)
             .await?;
 
-        let fd = File::create(&path).await?;
+        let fd = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path)
+            .await?;
         fd.set_len(size).await?;
         log::debug!("make push:{} key:{}", path.to_string_lossy(), key);
         self.writes.insert(key, FileWriteHandle { path, hash, fd });
@@ -82,17 +86,11 @@ impl UserStore {
         Ok(())
     }
 
-    /// write data to file and set seek start offset
     #[inline]
-    async fn write_offset(&mut self, key: u64, offset: u64, data: &[u8]) -> anyhow::Result<()> {
-        let handle = self
-            .writes
-            .get_mut(&key)
-            .with_context(|| format!("not found write key:{}", key))?;
-        handle.fd.seek(SeekFrom::Start(offset)).await?;
-        handle.fd.write_all(data).await?;
-        Ok(())
+    fn get_path(&self, key: u64) -> Option<PathBuf> {
+        self.writes.get(&key).map(|x| x.path.clone())
     }
+
 
     /// finish write file
     #[inline]
@@ -195,10 +193,17 @@ impl IUserStore for Actor<UserStore> {
 
     #[inline]
     async fn write_offset(&self, key: u64, offset: u64, data: &[u8]) -> anyhow::Result<()> {
-        self.inner_call(
-            |inner| async move { inner.get_mut().write_offset(key, offset, data).await },
-        )
-        .await
+        let path = self.inner_call(|inner| async move { inner.get().get_path(key) })
+            .await.with_context(|| format!("not found key:{}", key))?;
+
+        let mut fd = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .await?;
+        fd.seek(SeekFrom::Start(offset)).await?;
+        fd.write_all(data).await?;
+        fd.flush().await?;
+        Ok(())
     }
 
     #[inline]
