@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 #[inline]
 pub fn get_current_exec_path() -> std::io::Result<PathBuf> {
@@ -15,4 +15,12 @@ pub fn get_current_exec_path() -> std::io::Result<PathBuf> {
         }
         Err(err) => return Err(err),
     })
+}
+
+#[inline]
+pub fn get_path_prefix(path: &Path) -> Option<Prefix> {
+    match path.components().next().unwrap() {
+        Component::Prefix(prefix_component) => Some(prefix_component.kind()),
+        _ => None,
+    }
 }

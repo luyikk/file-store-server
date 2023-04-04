@@ -1,12 +1,13 @@
 mod user_store;
+
 pub use user_store::*;
 
-use anyhow::ensure;
+use crate::service::io::get_path_prefix;
+use anyhow::{bail, ensure, Context};
 use aqueue::Actor;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-use std::io;
 use std::path::{Path, PathBuf};
 use tokio::sync::OnceCell;
 
@@ -19,7 +20,7 @@ pub struct FileStoreManager {
 }
 
 impl FileStoreManager {
-    pub fn new(root: PathBuf) -> io::Result<Actor<FileStoreManager>> {
+    pub fn new(root: PathBuf) -> anyhow::Result<Actor<FileStoreManager>> {
         let root_path = if root.is_absolute() && root.is_dir() {
             if !root.exists() {
                 std::fs::create_dir_all(&root)?;
@@ -36,6 +37,28 @@ impl FileStoreManager {
             }
             current_exec_path
         };
+
+        let root_path = if let Some(prefix) = get_path_prefix(&root_path) {
+            if prefix.is_verbatim() {
+                if let std::path::Prefix::VerbatimDisk(u) = prefix {
+                    log::trace!("path:{} is VerbatimDisk", root_path.display());
+                    PathBuf::from(
+                        root_path
+                            .to_string_lossy()
+                            .into_owned()
+                            .strip_prefix(r#"\\?\"#)
+                            .with_context(|| format!(r#"VerbatimDisk not is \\?\{}"#, u as char))?,
+                    )
+                } else {
+                    bail!("error prefix:{:?}", prefix);
+                }
+            } else {
+                root_path
+            }
+        } else {
+            root_path
+        };
+
         Ok(Actor::new(FileStoreManager {
             root: root_path,
             writes: Default::default(),

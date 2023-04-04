@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+#### Features
+* fix Windows prefix disk
+* add path ../ check
+
+
 ## 0.1.2
 #### Features
 * optimize async write

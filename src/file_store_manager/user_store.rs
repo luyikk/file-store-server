@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 
+use crate::service::io::get_path_prefix;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
@@ -34,27 +35,85 @@ impl UserStore {
     async fn push(&mut self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
         log::trace!("push:{filename}  size:{size}B  hash:{hash}");
 
+        if filename.contains("../") {
+            bail!("file name error:{} not include ../", filename)
+        }
+
         let path = self.root.join(&filename);
-        log::trace!("save path:{}", path.to_string_lossy());
+        log::trace!("save path:{}", path.display());
         ensure!(!path.exists(), "file already exist:{}", filename);
 
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        let create_parent = if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+                Some(parent.to_owned())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let fd = File::create(&path).await?;
         let c_path = path.canonicalize();
         tokio::fs::remove_file(&path).await?;
         drop(fd);
-        let path = c_path?;
+
+        let path = {
+            match c_path {
+                Ok(path) => {
+                    if let Some(prefix) = get_path_prefix(&path) {
+                        if prefix.is_verbatim() {
+                            if let std::path::Prefix::VerbatimDisk(u) = prefix {
+                                log::trace!("path:{} is VerbatimDisk", path.display());
+                                PathBuf::from(
+                                    path.to_string_lossy()
+                                        .into_owned()
+                                        .strip_prefix(r#"\\?\"#)
+                                        .with_context(|| {
+                                            format!(r#"VerbatimDisk not is \\?\{}"#, u as char)
+                                        })?,
+                                )
+                            } else {
+                                if let Some(create_parent) = create_parent {
+                                    if let Err(err) = tokio::fs::remove_dir(create_parent).await {
+                                        log::error!("remove dir fail:{err}");
+                                    }
+                                }
+                                bail!("error prefix:{:?}", prefix);
+                            }
+                        } else {
+                            path
+                        }
+                    } else {
+                        path
+                    }
+                }
+                Err(err) => {
+                    if let Some(create_parent) = create_parent {
+                        if let Err(err) = tokio::fs::remove_dir(create_parent).await {
+                            log::error!("remove dir fail:{err}");
+                        }
+                    }
+                    bail!("file:{} canonicalize error:{err}", path.display());
+                }
+            }
+        };
 
         if !path.starts_with(&self.root) {
             log::error!(
-                "file path error root:{} file:{}->{:?}",
-                &self.root.to_string_lossy(),
+                "file path error root:{} file:{}->{}",
+                &self.root.display(),
                 filename,
-                path.to_string_lossy()
+                path.display()
             );
+
+            if let Some(create_parent) = create_parent {
+                if let Err(err) = tokio::fs::remove_dir(create_parent).await {
+                    log::error!("remove dir fail:{err}");
+                }
+            }
+
             bail!("file path error:{}", filename)
         }
 
