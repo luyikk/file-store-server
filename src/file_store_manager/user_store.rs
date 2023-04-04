@@ -91,7 +91,6 @@ impl UserStore {
         self.writes.get(&key).map(|x| x.path.clone())
     }
 
-
     /// finish write file
     #[inline]
     async fn finish(&mut self, key: u64) -> anyhow::Result<()> {
@@ -193,13 +192,12 @@ impl IUserStore for Actor<UserStore> {
 
     #[inline]
     async fn write_offset(&self, key: u64, offset: u64, data: &[u8]) -> anyhow::Result<()> {
-        let path = self.inner_call(|inner| async move { inner.get().get_path(key) })
-            .await.with_context(|| format!("not found key:{}", key))?;
+        let path = self
+            .inner_call(|inner| async move { inner.get().get_path(key) })
+            .await
+            .with_context(|| format!("not found key:{}", key))?;
 
-        let mut fd = tokio::fs::OpenOptions::new()
-            .write(true)
-            .open(path)
-            .await?;
+        let mut fd = tokio::fs::OpenOptions::new().write(true).open(path).await?;
         fd.seek(SeekFrom::Start(offset)).await?;
         fd.write_all(data).await?;
         fd.flush().await?;
