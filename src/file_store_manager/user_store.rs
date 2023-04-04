@@ -97,10 +97,12 @@ impl UserStore {
         log::debug!("key:{key} finish");
 
         let path = {
-            let handle = self
+            let mut handle = self
                 .writes
                 .remove(&key)
                 .with_context(|| format!("not found key:{key}"))?;
+
+            handle.fd.flush().await?;
 
             FILE_STORE_MANAGER
                 .get()
