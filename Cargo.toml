@@ -10,6 +10,10 @@ description = "file store service."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default=["backtrace"]
+backtrace = ["anyhow/backtrace"]
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
@@ -19,9 +23,9 @@ log = "0.4"
 flexi_logger = { version = "0.25", features = ["async"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.7"
-netxserver = { version = "1.8", features = ["use_rustls","dserde"] }
+netxserver = { version = "1.8", features = ["use_rustls", "dserde"] }
 async-trait = "0.1"
-tokio-rustls = "0.23"
+tokio-rustls = "0.24"
 rustls-pemfile = "1"
 aqueue = "1.2"
 blake3 = "1.3"
