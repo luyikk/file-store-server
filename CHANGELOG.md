@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.4
+## 0.1.5
 #### Features
 * statically link Rust application for Windows x86-64
 
