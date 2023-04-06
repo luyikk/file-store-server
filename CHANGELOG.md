@@ -2,6 +2,10 @@
 
 ## 0.1.4
 #### Features
+* statically link Rust application for Windows x86-64
+
+## 0.1.4
+#### Features
 * update rustls and netx
 * add backtrace
 
