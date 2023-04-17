@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5
+#### Features
+* statically link Rust application for Windows x86-64
+
+## 0.1.4
+#### Features
+* update rustls and netx
+* add backtrace
+
 ## 0.1.3
 #### Features
 * fix Windows prefix disk
