@@ -6,13 +6,16 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
+use crate::file_store_manager::non_hasher::NonHasherBuilder;
 use crate::file_store_manager::{IFileStoreManager, FILE_STORE_MANAGER};
 use crate::service::io::get_path_prefix;
 
 /// file store manager
 pub struct UserStore {
     root: PathBuf,
-    writes: HashMap<u64, FileWriteHandle>,
+    // because the key has already been calculated
+    // no need to recalculate to improve query efficiency
+    writes: HashMap<u64, FileWriteHandle, NonHasherBuilder>,
 }
 
 /// file write handle
@@ -26,7 +29,7 @@ impl UserStore {
     pub fn new(root: PathBuf) -> Actor<UserStore> {
         Actor::new(UserStore {
             root,
-            writes: HashMap::new(),
+            writes: HashMap::with_hasher(NonHasherBuilder),
         })
     }
 
