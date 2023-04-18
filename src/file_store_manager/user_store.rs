@@ -51,29 +51,32 @@ impl UserStore {
         let path = self.root.join(&filename);
         log::trace!("save path:{}", path.display());
 
-        if path.exists() {
+        let (c_path, create_parent) = if path.exists() {
             if !overwrite {
                 bail!("file already exist:{}", filename);
             } else {
+                let c_path = path.canonicalize();
                 tokio::fs::remove_file(&path).await?;
-            }
-        }
-
-        let create_parent = if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)?;
-                Some(parent.to_owned())
-            } else {
-                None
+                (c_path, None)
             }
         } else {
-            None
-        };
+            let create_parent = if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                    Some(parent.to_owned())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
-        let fd = File::create(&path).await?;
-        let c_path = path.canonicalize();
-        tokio::fs::remove_file(&path).await?;
-        drop(fd);
+            let fd = File::create(&path).await?;
+            let c_path = path.canonicalize();
+            tokio::fs::remove_file(&path).await?;
+            drop(fd);
+            (c_path, create_parent)
+        };
 
         let path = {
             match c_path {
