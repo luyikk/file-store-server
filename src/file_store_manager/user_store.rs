@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Context};
+use anyhow::{bail, Context};
 use aqueue::Actor;
 use std::collections::HashMap;
 use std::io::SeekFrom;
@@ -32,7 +32,13 @@ impl UserStore {
 
     /// create push file
     #[inline]
-    async fn push(&mut self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
+    async fn push(
+        &mut self,
+        filename: String,
+        size: u64,
+        hash: String,
+        overwrite: bool,
+    ) -> anyhow::Result<u64> {
         log::trace!("push:{filename}  size:{size}B  hash:{hash}");
 
         if filename.contains("../") {
@@ -41,7 +47,14 @@ impl UserStore {
 
         let path = self.root.join(&filename);
         log::trace!("save path:{}", path.display());
-        ensure!(!path.exists(), "file already exist:{}", filename);
+
+        if path.exists() {
+            if !overwrite {
+                bail!("file already exist:{}", filename);
+            } else {
+                tokio::fs::remove_file(&path).await?;
+            }
+        }
 
         let create_parent = if let Some(parent) = path.parent() {
             if !parent.exists() {
@@ -226,7 +239,13 @@ impl UserStore {
 #[async_trait::async_trait]
 pub trait IUserStore {
     /// create push file
-    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64>;
+    async fn push(
+        &self,
+        filename: String,
+        size: u64,
+        hash: String,
+        overwrite: bool,
+    ) -> anyhow::Result<u64>;
     /// write data to file
     async fn write(&self, key: u64, data: &[u8]) -> anyhow::Result<()>;
     /// write file buff
@@ -240,9 +259,17 @@ pub trait IUserStore {
 #[async_trait::async_trait]
 impl IUserStore for Actor<UserStore> {
     #[inline]
-    async fn push(&self, filename: String, size: u64, hash: String) -> anyhow::Result<u64> {
-        self.inner_call(|inner| async move { inner.get_mut().push(filename, size, hash).await })
-            .await
+    async fn push(
+        &self,
+        filename: String,
+        size: u64,
+        hash: String,
+        overwrite: bool,
+    ) -> anyhow::Result<u64> {
+        self.inner_call(|inner| async move {
+            inner.get_mut().push(filename, size, hash, overwrite).await
+        })
+        .await
     }
 
     #[inline]
