@@ -49,7 +49,7 @@ pub trait IFileStoreService {
 }
 
 pub struct FileStoreService {
-    token: NetxToken,
+    token: NetxToken<Self>,
     file_store: Actor<UserStore>,
 }
 
@@ -121,8 +121,13 @@ impl IFileStoreService for FileStoreService {
 
 pub struct ImplCreateController;
 impl ICreateController for ImplCreateController {
+    type Controller = FileStoreService;
+
     #[inline]
-    fn create_controller(&self, token: NetxToken) -> anyhow::Result<Arc<dyn IController>> {
+    fn create_controller(
+        &self,
+        token: NetxToken<Self::Controller>,
+    ) -> anyhow::Result<Arc<Self::Controller>> {
         Ok(Arc::new(FileStoreService {
             token,
             file_store: FILE_STORE_MANAGER.get().unwrap().new_user_store(),

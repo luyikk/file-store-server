@@ -1,3 +1,4 @@
+mod non_hasher;
 mod user_store;
 
 pub use user_store::*;

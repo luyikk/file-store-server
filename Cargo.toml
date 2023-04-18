@@ -23,7 +23,7 @@ log = "0.4"
 flexi_logger = { version = "0.25", features = ["async"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.7"
-netxserver = { version = "1.8", features = ["use_rustls", "dserde"] }
+netxserver = { version = "1.9", features = ["use_rustls", "dserde"] }
 async-trait = "0.1"
 tokio-rustls = "0.24"
 rustls-pemfile = "1"
