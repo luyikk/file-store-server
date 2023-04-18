@@ -1,5 +1,10 @@
 # Changelog
 
+# 0.1.6
+* optimize hashmap
+* add overwrite file
+
+
 ## 0.1.5
 #### Features
 * statically link Rust application for Windows x86-64
