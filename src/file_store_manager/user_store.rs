@@ -1,5 +1,7 @@
 use anyhow::{bail, Context};
 use aqueue::Actor;
+use path_absolutize::Absolutize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::SeekFrom;
 use std::path::PathBuf;
@@ -42,98 +44,32 @@ impl UserStore {
         hash: String,
         overwrite: bool,
     ) -> anyhow::Result<u64> {
-        log::trace!("push:{filename}  size:{size}B  hash:{hash}");
-
-        if filename.contains("../") {
-            bail!("file name error:{} not include ../", filename)
-        }
+        log::info!("push:{filename}  size:{size}B  hash:{hash}");
 
         let path = self.root.join(&filename);
-        log::trace!("save path:{}", path.display());
 
-        let (c_path, create_parent) = if path.exists() {
+        let path = if path.exists() {
             if !overwrite {
                 bail!("file already exist:{}", filename);
             } else {
-                let c_path = path.canonicalize();
-                tokio::fs::remove_file(&path).await?;
-                (c_path, None)
+                path.absolutize()?.to_path_buf()
             }
         } else {
-            let create_parent = if let Some(parent) = path.parent() {
-                if !parent.exists() {
-                    std::fs::create_dir_all(parent)?;
-                    Some(parent.to_owned())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let fd = File::create(&path).await?;
-            let c_path = path.canonicalize();
-            tokio::fs::remove_file(&path).await?;
-            drop(fd);
-            (c_path, create_parent)
+            path.absolutize()?.to_path_buf()
         };
 
-        let path = {
-            match c_path {
-                Ok(path) => {
-                    if let Some(prefix) = get_path_prefix(&path) {
-                        if prefix.is_verbatim() {
-                            if let std::path::Prefix::VerbatimDisk(u) = prefix {
-                                log::trace!("path:{} is VerbatimDisk", path.display());
-                                PathBuf::from(
-                                    path.to_string_lossy()
-                                        .into_owned()
-                                        .strip_prefix(r#"\\?\"#)
-                                        .with_context(|| {
-                                            format!(r#"VerbatimDisk not is \\?\{}"#, u as char)
-                                        })?,
-                                )
-                            } else {
-                                if let Some(create_parent) = create_parent {
-                                    if let Err(err) = tokio::fs::remove_dir(create_parent).await {
-                                        log::error!("remove dir fail:{err}");
-                                    }
-                                }
-                                bail!("error prefix:{:?}", prefix);
-                            }
-                        } else {
-                            path
-                        }
-                    } else {
-                        path
-                    }
-                }
-                Err(err) => {
-                    if let Some(create_parent) = create_parent {
-                        if let Err(err) = tokio::fs::remove_dir(create_parent).await {
-                            log::error!("remove dir fail:{err}");
-                        }
-                    }
-                    bail!("file:{} canonicalize error:{err}", path.display());
-                }
-            }
-        };
+        log::trace!("save path:{}", path.display());
+
+        let path = remove_prefix(path.absolutize()?.to_path_buf())?;
 
         if !path.starts_with(&self.root) {
             log::error!(
-                "file path error root:{} file:{}->{}",
+                "file path not include root:{} file:{}->{}",
                 &self.root.display(),
                 filename,
                 path.display()
             );
-
-            if let Some(create_parent) = create_parent {
-                if let Err(err) = tokio::fs::remove_dir(create_parent).await {
-                    log::error!("remove dir fail:{err}");
-                }
-            }
-
-            bail!("file path error:{}", filename)
+            bail!("file path illegal:{} not include root", filename)
         }
 
         let key = FILE_STORE_MANAGER
@@ -142,11 +78,22 @@ impl UserStore {
             .create_write_key(&path)
             .await?;
 
+        if path.exists() {
+            tokio::fs::remove_file(&path).await?;
+        }
+
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
         let fd = tokio::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .open(&path)
             .await?;
+
         fd.set_len(size).await?;
         log::debug!("make push:{} key:{}", path.to_string_lossy(), key);
         self.writes.insert(key, FileWriteHandle { path, hash, fd });
@@ -215,7 +162,7 @@ impl UserStore {
             path
         };
 
-        log::debug!("file finish write:{}", path.to_string_lossy());
+        log::info!("file finish write:{}", path.to_string_lossy());
 
         Ok(())
     }
@@ -240,6 +187,58 @@ impl UserStore {
         }
         Ok(())
     }
+
+    /// Check if the filenames can be push
+    #[inline]
+    async fn check(
+        &self,
+        filenames: Vec<String>,
+        overwrite: bool,
+    ) -> anyhow::Result<(bool, Cow<'static, str>)> {
+        for filename in filenames {
+            let path = self.root.join(&filename);
+            log::debug!("check filename:{filename}");
+            if path.exists() {
+                if !overwrite {
+                    return Ok((false, Cow::Owned(format!("file:{filename} already exist"))));
+                } else {
+                    let path = remove_prefix(path.absolutize()?.to_path_buf())?;
+                    if !path.starts_with(&self.root) {
+                        bail!("file path illegal:{} not include root", filename)
+                    }
+                    if FILE_STORE_MANAGER.get().unwrap().has_filename(&path) {
+                        return Ok((false, Cow::Owned(format!("file:{filename} uploading"))));
+                    }
+                }
+            }
+        }
+
+        Ok((true, Cow::Borrowed("success")))
+    }
+}
+
+/// remove prefix verbatim disk path tag
+#[inline]
+pub fn remove_prefix(path: PathBuf) -> anyhow::Result<PathBuf> {
+    if let Some(prefix) = get_path_prefix(&path) {
+        if prefix.is_verbatim() {
+            if let std::path::Prefix::VerbatimDisk(u) = prefix {
+                log::trace!("path:{} is VerbatimDisk", path.display());
+                Ok(PathBuf::from(
+                    path.to_string_lossy()
+                        .into_owned()
+                        .strip_prefix(r#"\\?\"#)
+                        .with_context(|| format!(r#"VerbatimDisk not is \\?\{}"#, u as char))?,
+                ))
+            } else {
+                bail!("error prefix:{:?}", prefix);
+            }
+        } else {
+            Ok(path)
+        }
+    } else {
+        Ok(path)
+    }
 }
 
 #[async_trait::async_trait]
@@ -260,6 +259,12 @@ pub trait IUserStore {
     async fn finish(&self, key: u64) -> anyhow::Result<()>;
     /// clear Incomplete files
     async fn clear(&self) -> anyhow::Result<()>;
+    /// Check if the filenames can be push
+    async fn check(
+        &self,
+        filenames: Vec<String>,
+        overwrite: bool,
+    ) -> anyhow::Result<(bool, Cow<'static, str>)>;
 }
 
 #[async_trait::async_trait]
@@ -306,6 +311,16 @@ impl IUserStore for Actor<UserStore> {
     #[inline]
     async fn clear(&self) -> anyhow::Result<()> {
         self.inner_call(|inner| async move { inner.get_mut().clear().await })
+            .await
+    }
+
+    #[inline]
+    async fn check(
+        &self,
+        filenames: Vec<String>,
+        overwrite: bool,
+    ) -> anyhow::Result<(bool, Cow<'static, str>)> {
+        self.inner_call(|inner| async move { inner.get().check(filenames, overwrite).await })
             .await
     }
 }

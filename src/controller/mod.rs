@@ -1,5 +1,6 @@
 use crate::file_store_manager::{IFileStoreManager, IUserStore, UserStore, FILE_STORE_MANAGER};
 use netxserver::prelude::{tcpserver::IPeer, *};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 #[build(FileStoreService)]
@@ -46,6 +47,13 @@ pub trait IFileStoreService {
     /// finish write
     #[tag(1004)]
     async fn push_finish(&self, key: u64) -> anyhow::Result<()>;
+    /// Check if the filenames can be push
+    #[tag(1005)]
+    async fn check(
+        &self,
+        filenames: Vec<String>,
+        overwrite: bool,
+    ) -> anyhow::Result<(bool, Cow<'static, str>)>;
 }
 
 pub struct FileStoreService {
@@ -116,6 +124,15 @@ impl IFileStoreService for FileStoreService {
     #[inline]
     async fn push_finish(&self, key: u64) -> anyhow::Result<()> {
         self.file_store.finish(key).await
+    }
+
+    #[inline]
+    async fn check(
+        &self,
+        filenames: Vec<String>,
+        overwrite: bool,
+    ) -> anyhow::Result<(bool, Cow<'static, str>)> {
+        self.file_store.check(filenames, overwrite).await
     }
 }
 

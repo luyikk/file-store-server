@@ -101,6 +101,8 @@ pub trait IFileStoreManager {
     async fn create_write_key(&self, filename: &Path) -> anyhow::Result<u64>;
     /// finish write key
     async fn finish_write_key(&self, key: u64);
+    /// has file name
+    fn has_filename(&self, filename: &Path) -> bool;
 }
 
 #[async_trait::async_trait]
@@ -117,5 +119,16 @@ impl IFileStoreManager for Actor<FileStoreManager> {
     async fn finish_write_key(&self, key: u64) {
         self.inner_call(|inner| async move { inner.get_mut().finish_write_key(key) })
             .await
+    }
+
+    #[inline]
+    fn has_filename(&self, filename: &Path) -> bool {
+        let key = {
+            let mut hasher = DefaultHasher::new();
+            filename.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        unsafe { self.deref_inner().writes.contains(&key) }
     }
 }
