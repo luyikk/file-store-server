@@ -117,6 +117,11 @@ impl UserStore {
         self.writes.get(&key).map(|x| x.path.clone())
     }
 
+    #[inline]
+    fn get_hash(&self, key: u64) -> Option<String> {
+        self.writes.get(&key).map(|x| x.hash.clone())
+    }
+
     /// finish write file
     #[inline]
     async fn finish(&mut self, key: u64) -> anyhow::Result<()> {
@@ -263,6 +268,8 @@ pub trait IUserStore {
     async fn write(&self, key: u64, data: &[u8]) -> anyhow::Result<()>;
     /// write file buff
     async fn write_offset(&self, key: u64, offset: u64, data: &[u8]) -> anyhow::Result<()>;
+    /// check file is finish
+    async fn check_finish(&self, key: u64) -> anyhow::Result<bool>;
     /// finish write file
     async fn finish(&self, key: u64) -> anyhow::Result<()>;
     /// clear Incomplete files
@@ -314,6 +321,35 @@ impl IUserStore for Actor<UserStore> {
         fd.write_all(data).await?;
         fd.flush().await?;
         Ok(())
+    }
+
+    #[inline]
+    async fn check_finish(&self, key: u64) -> anyhow::Result<bool> {
+        let path = self
+            .inner_call(|inner| async move { inner.get().get_path(key) })
+            .await
+            .with_context(|| format!("not found key:{}", key))?;
+
+        let t_hash = self
+            .inner_call(|inner| async move { inner.get().get_hash(key) })
+            .await
+            .with_context(|| format!("not found key:{}", key))?;
+
+        let c_hash = {
+            let mut sha = blake3::Hasher::new();
+            let mut data = vec![0; 512 * 1024];
+            let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
+            while let Ok(len) = file.read(&mut data).await {
+                if len > 0 {
+                    sha.update(&data[..len]);
+                } else {
+                    break;
+                }
+            }
+            hex::encode(sha.finalize().as_bytes())
+        };
+
+        Ok(t_hash == c_hash)
     }
 
     #[inline]

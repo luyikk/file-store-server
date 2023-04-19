@@ -54,6 +54,10 @@ pub trait IFileStoreService {
         filenames: Vec<String>,
         overwrite: bool,
     ) -> anyhow::Result<(bool, Cow<'static, str>)>;
+
+    /// check ready
+    #[tag(1006)]
+    async fn check_finish(&self, key: u64) -> anyhow::Result<bool>;
 }
 
 pub struct FileStoreService {
@@ -142,6 +146,11 @@ impl IFileStoreService for FileStoreService {
         self.file_store
             .lock(filenames, overwrite, self.token.get_session_id())
             .await
+    }
+
+    #[inline]
+    async fn check_finish(&self, key: u64) -> anyhow::Result<bool> {
+        self.file_store.check_finish(key).await
     }
 }
 
