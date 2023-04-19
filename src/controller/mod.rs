@@ -47,9 +47,9 @@ pub trait IFileStoreService {
     /// finish write
     #[tag(1004)]
     async fn push_finish(&self, key: u64) -> anyhow::Result<()>;
-    /// Check if the filenames can be push
+    /// lock the filenames can be push
     #[tag(1005)]
-    async fn check(
+    async fn lock(
         &self,
         filenames: Vec<String>,
         overwrite: bool,
@@ -95,6 +95,11 @@ impl IFileStoreService for FileStoreService {
     async fn closed(&self) -> anyhow::Result<()> {
         log::info!("client session {} closed", self.token.get_session_id());
         self.file_store.clear().await?;
+        FILE_STORE_MANAGER
+            .get()
+            .unwrap()
+            .clear_lock(self.token.get_session_id())
+            .await;
         Ok(())
     }
 
@@ -106,7 +111,9 @@ impl IFileStoreService for FileStoreService {
         hash: String,
         overwrite: bool,
     ) -> anyhow::Result<u64> {
-        self.file_store.push(filename, size, hash, overwrite).await
+        self.file_store
+            .push(filename, size, hash, overwrite, self.token.get_session_id())
+            .await
     }
 
     #[inline]
@@ -127,12 +134,14 @@ impl IFileStoreService for FileStoreService {
     }
 
     #[inline]
-    async fn check(
+    async fn lock(
         &self,
         filenames: Vec<String>,
         overwrite: bool,
     ) -> anyhow::Result<(bool, Cow<'static, str>)> {
-        self.file_store.check(filenames, overwrite).await
+        self.file_store
+            .lock(filenames, overwrite, self.token.get_session_id())
+            .await
     }
 }
 

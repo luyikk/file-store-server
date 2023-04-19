@@ -43,6 +43,7 @@ impl UserStore {
         size: u64,
         hash: String,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<u64> {
         log::info!("push:{filename}  size:{size}B  hash:{hash}");
 
@@ -75,7 +76,7 @@ impl UserStore {
         let key = FILE_STORE_MANAGER
             .get()
             .unwrap()
-            .create_write_key(&path)
+            .create_write_key(&path, session_id)
             .await?;
 
         if path.exists() {
@@ -190,14 +191,16 @@ impl UserStore {
 
     /// Check if the filenames can be push
     #[inline]
-    async fn check(
+    async fn lock(
         &self,
         filenames: Vec<String>,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<(bool, Cow<'static, str>)> {
+        let mut paths = Vec::with_capacity(filenames.len());
         for filename in filenames {
             let path = self.root.join(&filename);
-            log::debug!("check filename:{filename}");
+            log::debug!("lock filename:{filename}");
             if path.exists() {
                 if !overwrite {
                     return Ok((false, Cow::Owned(format!("file:{filename} already exist"))));
@@ -206,12 +209,16 @@ impl UserStore {
                     if !path.starts_with(&self.root) {
                         bail!("file path illegal:{} not include root", filename)
                     }
-                    if FILE_STORE_MANAGER.get().unwrap().has_filename(&path) {
-                        return Ok((false, Cow::Owned(format!("file:{filename} uploading"))));
-                    }
+                    paths.push(path);
                 }
             }
         }
+
+        FILE_STORE_MANAGER
+            .get()
+            .unwrap()
+            .lock(&paths, session_id)
+            .await?;
 
         Ok((true, Cow::Borrowed("success")))
     }
@@ -250,6 +257,7 @@ pub trait IUserStore {
         size: u64,
         hash: String,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<u64>;
     /// write data to file
     async fn write(&self, key: u64, data: &[u8]) -> anyhow::Result<()>;
@@ -260,10 +268,11 @@ pub trait IUserStore {
     /// clear Incomplete files
     async fn clear(&self) -> anyhow::Result<()>;
     /// Check if the filenames can be push
-    async fn check(
+    async fn lock(
         &self,
         filenames: Vec<String>,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<(bool, Cow<'static, str>)>;
 }
 
@@ -276,9 +285,13 @@ impl IUserStore for Actor<UserStore> {
         size: u64,
         hash: String,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<u64> {
         self.inner_call(|inner| async move {
-            inner.get_mut().push(filename, size, hash, overwrite).await
+            inner
+                .get_mut()
+                .push(filename, size, hash, overwrite, session_id)
+                .await
         })
         .await
     }
@@ -315,12 +328,15 @@ impl IUserStore for Actor<UserStore> {
     }
 
     #[inline]
-    async fn check(
+    async fn lock(
         &self,
         filenames: Vec<String>,
         overwrite: bool,
+        session_id: i64,
     ) -> anyhow::Result<(bool, Cow<'static, str>)> {
-        self.inner_call(|inner| async move { inner.get().check(filenames, overwrite).await })
-            .await
+        self.inner_call(
+            |inner| async move { inner.get().lock(filenames, overwrite, session_id).await },
+        )
+        .await
     }
 }
