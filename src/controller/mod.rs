@@ -1,7 +1,19 @@
 use crate::file_store_manager::{IFileStoreManager, IUserStore, UserStore, FILE_STORE_MANAGER};
 use netxserver::prelude::{tcpserver::IPeer, *};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
+
+#[derive(Serialize, Deserialize)]
+pub struct Entry {
+    /// 0=file 1=directory
+    pub file_type: u8,
+    pub name: String,
+    pub size: u64,
+    pub create_time: SystemTime,
+}
 
 #[build(FileStoreService)]
 pub trait IFileStoreService {
@@ -58,6 +70,10 @@ pub trait IFileStoreService {
     /// check ready
     #[tag(1006)]
     async fn check_finish(&self, key: u64) -> anyhow::Result<bool>;
+
+    /// show directory contents
+    #[tag(1007)]
+    async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>>;
 }
 
 pub struct FileStoreService {
@@ -151,6 +167,11 @@ impl IFileStoreService for FileStoreService {
     #[inline]
     async fn check_finish(&self, key: u64) -> anyhow::Result<bool> {
         self.file_store.check_finish(key).await
+    }
+
+    #[inline]
+    async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>> {
+        self.file_store.show_directory_contents(path).await
     }
 }
 

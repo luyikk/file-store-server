@@ -1,4 +1,5 @@
-use anyhow::{bail, Context};
+use crate::controller::Entry;
+use anyhow::{bail, ensure, Context};
 use aqueue::Actor;
 use path_absolutize::Absolutize;
 use std::borrow::Cow;
@@ -227,6 +228,56 @@ impl UserStore {
 
         Ok((true, Cow::Borrowed("success")))
     }
+
+    #[inline]
+    async fn show_directory_contents(&self, dir: PathBuf) -> anyhow::Result<Vec<Entry>> {
+        let path = self.root.join(&dir);
+
+        ensure!(path.is_dir(), "path:{} not is dir", dir.display());
+
+        let path = if path.exists() {
+            path.absolutize()?.to_path_buf()
+        } else {
+            bail!("dir:{} not found", dir.display());
+        };
+
+        let path = remove_prefix(path.absolutize()?.to_path_buf())?;
+
+        if !path.starts_with(&self.root) {
+            log::error!(
+                "file path not include root:{} file:{}->{}",
+                &self.root.display(),
+                dir.display(),
+                path.display()
+            );
+            bail!("file path illegal:{} not include root", dir.display())
+        }
+
+        let mut result = vec![];
+
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let create_time = metadata.created()?;
+            if metadata.is_dir() {
+                result.push(Entry {
+                    file_type: 1,
+                    name: entry.file_name().to_string_lossy().to_string(),
+                    size: 0,
+                    create_time,
+                })
+            } else {
+                result.push(Entry {
+                    file_type: 0,
+                    name: entry.file_name().to_string_lossy().to_string(),
+                    size: metadata.len(),
+                    create_time,
+                })
+            }
+        }
+
+        Ok(result)
+    }
 }
 
 /// remove prefix verbatim disk path tag
@@ -281,6 +332,8 @@ pub trait IUserStore {
         overwrite: bool,
         session_id: i64,
     ) -> anyhow::Result<(bool, Cow<'static, str>)>;
+    /// show director contents
+    async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>>;
 }
 
 #[async_trait::async_trait]
@@ -374,5 +427,10 @@ impl IUserStore for Actor<UserStore> {
             |inner| async move { inner.get().lock(filenames, overwrite, session_id).await },
         )
         .await
+    }
+
+    #[inline]
+    async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>> {
+        unsafe { self.deref_inner().show_directory_contents(path).await }
     }
 }
