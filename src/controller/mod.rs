@@ -6,13 +6,22 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Entry {
     /// 0=file 1=directory
     pub file_type: u8,
     pub name: String,
     pub size: u64,
     pub create_time: SystemTime,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileInfo {
+    pub name: String,
+    pub size: u64,
+    pub create_time: SystemTime,
+    pub b3: Option<String>,
+    pub sha256: Option<String>,
 }
 
 #[build(FileStoreService)]
@@ -74,6 +83,15 @@ pub trait IFileStoreService {
     /// show directory contents
     #[tag(1007)]
     async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>>;
+
+    /// get file info
+    #[tag(1008)]
+    async fn get_file_info(
+        &self,
+        path: PathBuf,
+        blake3: bool,
+        sha256: bool,
+    ) -> anyhow::Result<FileInfo>;
 }
 
 pub struct FileStoreService {
@@ -172,6 +190,16 @@ impl IFileStoreService for FileStoreService {
     #[inline]
     async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>> {
         self.file_store.show_directory_contents(path).await
+    }
+
+    #[inline]
+    async fn get_file_info(
+        &self,
+        path: PathBuf,
+        blake3: bool,
+        sha256: bool,
+    ) -> anyhow::Result<FileInfo> {
+        self.file_store.get_file_info(path, blake3, sha256).await
     }
 }
 

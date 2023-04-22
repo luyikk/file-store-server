@@ -30,7 +30,9 @@ rustls-pemfile = "1"
 aqueue = "1.2"
 path-absolutize = "3"
 blake3 = "1.3"
+sha2 = "0.10"
 hex = "0.4"
+
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.6"

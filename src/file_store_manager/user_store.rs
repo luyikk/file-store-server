@@ -1,4 +1,4 @@
-use crate::controller::Entry;
+use crate::controller::{Entry, FileInfo};
 use anyhow::{bail, ensure, Context};
 use aqueue::Actor;
 use path_absolutize::Absolutize;
@@ -213,7 +213,7 @@ impl UserStore {
                 } else {
                     let path = remove_prefix(path.absolutize()?.to_path_buf())?;
                     if !path.starts_with(&self.root) {
-                        bail!("file path illegal:{} not include root", filename)
+                        bail!("directory path illegal:{} not include root", filename)
                     }
                     paths.push(path);
                 }
@@ -233,13 +233,13 @@ impl UserStore {
     async fn show_directory_contents(&self, dir: PathBuf) -> anyhow::Result<Vec<Entry>> {
         let path = self.root.join(&dir);
 
-        ensure!(path.is_dir(), "path:{} not is dir", dir.display());
-
         let path = if path.exists() {
             path.absolutize()?.to_path_buf()
         } else {
             bail!("dir:{} not found", dir.display());
         };
+
+        ensure!(path.is_dir(), "path:{} not is dir", dir.display());
 
         let path = remove_prefix(path.absolutize()?.to_path_buf())?;
 
@@ -277,6 +277,83 @@ impl UserStore {
         }
 
         Ok(result)
+    }
+
+    #[inline]
+    async fn get_file_info(
+        &self,
+        file: PathBuf,
+        blake3: bool,
+        sha256: bool,
+    ) -> anyhow::Result<FileInfo> {
+        let path = self.root.join(&file);
+
+        let path = if path.exists() {
+            path.absolutize()?.to_path_buf()
+        } else {
+            bail!("file:{} not found", file.display());
+        };
+
+        ensure!(path.is_file(), "path:{} not is file", file.display());
+
+        let path = remove_prefix(path.absolutize()?.to_path_buf())?;
+
+        if !path.starts_with(&self.root) {
+            log::error!(
+                "file path not include root:{} file:{}->{}",
+                &self.root.display(),
+                file.display(),
+                path.display()
+            );
+            bail!("file path illegal:{} not include root", file.display())
+        }
+
+        let metadata = path.metadata()?;
+
+        let c_hash = {
+            if blake3 {
+                let mut sha = blake3::Hasher::new();
+                let mut data = vec![0; 512 * 1024];
+                let mut file = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
+                while let Ok(len) = file.read(&mut data).await {
+                    if len > 0 {
+                        sha.update(&data[..len]);
+                    } else {
+                        break;
+                    }
+                }
+                Some(hex::encode(sha.finalize().as_bytes()))
+            } else {
+                None
+            }
+        };
+
+        let sha256 = {
+            if sha256 {
+                use sha2::{Digest, Sha256};
+                let mut sha = Sha256::default();
+                let mut data = vec![0; 512 * 1024];
+                let mut file = tokio::fs::OpenOptions::new().read(true).open(path).await?;
+                while let Ok(len) = file.read(&mut data).await {
+                    if len > 0 {
+                        sha.update(&data[..len]);
+                    } else {
+                        break;
+                    }
+                }
+                Some(hex::encode(sha.finalize()))
+            } else {
+                None
+            }
+        };
+
+        Ok(FileInfo {
+            name: file.file_name().unwrap().to_string_lossy().to_string(),
+            size: metadata.len(),
+            create_time: metadata.created()?,
+            b3: c_hash,
+            sha256,
+        })
     }
 }
 
@@ -334,6 +411,13 @@ pub trait IUserStore {
     ) -> anyhow::Result<(bool, Cow<'static, str>)>;
     /// show director contents
     async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>>;
+    /// get file info
+    async fn get_file_info(
+        &self,
+        path: PathBuf,
+        blake3: bool,
+        sha256: bool,
+    ) -> anyhow::Result<FileInfo>;
 }
 
 #[async_trait::async_trait]
@@ -432,5 +516,14 @@ impl IUserStore for Actor<UserStore> {
     #[inline]
     async fn show_directory_contents(&self, path: PathBuf) -> anyhow::Result<Vec<Entry>> {
         unsafe { self.deref_inner().show_directory_contents(path).await }
+    }
+    #[inline]
+    async fn get_file_info(
+        &self,
+        path: PathBuf,
+        blake3: bool,
+        sha256: bool,
+    ) -> anyhow::Result<FileInfo> {
+        unsafe { self.deref_inner().get_file_info(path, blake3, sha256).await }
     }
 }
