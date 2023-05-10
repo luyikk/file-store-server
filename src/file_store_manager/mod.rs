@@ -17,8 +17,17 @@ pub static FILE_STORE_MANAGER: OnceCell<Actor<FileStoreManager>> = OnceCell::con
 /// file store manager
 pub struct FileStoreManager {
     root: PathBuf,
+    // current write file
     writes: HashSet<u64>,
-    locks: HashMap<u64, i64>,
+    // current user lock write file
+    // allow only specified users to write
+    // key is file key, value is user session id
+    w_locks: HashMap<u64, i64>,
+    // current read file table
+    // modification is not allowed as long as it exists
+    // key is file key, value is read user table,
+    // Invalidate when table is empty
+    r_locks: HashMap<u64, HashSet<i64>>,
 }
 
 impl FileStoreManager {
@@ -64,7 +73,8 @@ impl FileStoreManager {
         Ok(Actor::new(FileStoreManager {
             root: root_path,
             writes: Default::default(),
-            locks: Default::default(),
+            w_locks: Default::default(),
+            r_locks: Default::default(),
         }))
     }
 
@@ -83,10 +93,16 @@ impl FileStoreManager {
         ensure!(
             !self.writes.contains(&key),
             "file is being uploaded:{:?}",
-            filename
+            filename.file_name()
         );
 
-        if let Some(id) = self.locks.get(&key) {
+        ensure!(
+            !self.r_locks.contains_key(&key),
+            "file is being read:{:?}",
+            filename.file_name()
+        );
+
+        if let Some(id) = self.w_locks.get(&key) {
             ensure!(*id == session_id, "file is being lock:{:?}", filename);
         }
 
@@ -97,7 +113,32 @@ impl FileStoreManager {
     /// finish write key
     fn finish_write_key(&mut self, key: u64) {
         self.writes.remove(&key);
-        self.locks.remove(&key);
+        self.w_locks.remove(&key);
+    }
+
+    /// create read key
+    fn create_read_key(&mut self, filename: &Path, session_id: i64) -> anyhow::Result<u64> {
+        let key = {
+            let mut hasher = DefaultHasher::new();
+            filename.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        self.r_locks
+            .entry(key)
+            .or_insert(HashSet::new())
+            .insert(session_id);
+
+        Ok(key)
+    }
+
+    fn finish_read_key(&mut self, key: u64, session_id: i64) {
+        if let Some(table) = self.r_locks.get_mut(&key) {
+            table.remove(&session_id);
+            if table.is_empty() {
+                self.r_locks.remove(&key);
+            }
+        }
     }
 
     /// lock file
@@ -113,10 +154,16 @@ impl FileStoreManager {
             ensure!(
                 !self.writes.contains(&key),
                 "file is being uploaded:{:?}",
-                path
+                path.file_name()
             );
 
-            if let Some(id) = self.locks.get(&key) {
+            ensure!(
+                !self.r_locks.contains_key(&key),
+                "file is being read:{:?}",
+                path.file_name()
+            );
+
+            if let Some(id) = self.w_locks.get(&key) {
                 if *id != session_id {
                     bail!("file is being uploaded:{:?}", path)
                 }
@@ -126,7 +173,7 @@ impl FileStoreManager {
         }
 
         for key in keys {
-            self.locks.insert(key, session_id);
+            self.w_locks.insert(key, session_id);
         }
 
         Ok(())
@@ -134,7 +181,11 @@ impl FileStoreManager {
 
     /// clear user lock file
     fn clear_lock(&mut self, session_id: i64) {
-        self.locks.retain(|_, v| *v != session_id)
+        self.w_locks.retain(|_, v| *v != session_id);
+        self.r_locks.iter_mut().for_each(|(_, v)| {
+            v.remove(&session_id);
+        });
+        self.r_locks.retain(|_, v| !v.is_empty());
     }
 }
 
@@ -146,8 +197,16 @@ pub trait IFileStoreManager {
     async fn create_write_key(&self, filename: &Path, session_id: i64) -> anyhow::Result<u64>;
     /// finish write key
     async fn finish_write_key(&self, key: u64);
+    /// create read key
+    async fn create_read_key(&self, filename: &Path, session_id: i64) -> anyhow::Result<u64>;
+    /// finish write key
+    async fn finish_read_key(&self, key: u64, session_id: i64);
     /// has file name
-    async fn lock(&self, paths: &[PathBuf], session_id: i64) -> anyhow::Result<()>;
+    async fn lock_write(&self, paths: &[PathBuf], session_id: i64) -> anyhow::Result<()>;
+    /// check file is lock
+    async fn is_lock_write(&self, path: &Path) -> bool;
+    /// check file is lock
+    async fn is_lock_read(&self, path: &Path) -> bool;
     /// clear user lock files
     async fn clear_lock(&self, session_id: i64);
 }
@@ -170,8 +229,44 @@ impl IFileStoreManager for Actor<FileStoreManager> {
             .await
     }
 
-    async fn lock(&self, paths: &[PathBuf], session_id: i64) -> anyhow::Result<()> {
+    async fn create_read_key(&self, filename: &Path, session_id: i64) -> anyhow::Result<u64> {
+        self.inner_call(
+            |inner| async move { inner.get_mut().create_read_key(filename, session_id) },
+        )
+        .await
+    }
+
+    async fn finish_read_key(&self, key: u64, session_id: i64) {
+        self.inner_call(|inner| async move { inner.get_mut().finish_read_key(key, session_id) })
+            .await
+    }
+
+    async fn lock_write(&self, paths: &[PathBuf], session_id: i64) -> anyhow::Result<()> {
         self.inner_call(|inner| async move { inner.get_mut().lock(paths, session_id) })
+            .await
+    }
+
+    async fn is_lock_write(&self, filename: &Path) -> bool {
+        let key = {
+            let mut hasher = DefaultHasher::new();
+            filename.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        self.inner_call(|inner| async move {
+            inner.get().w_locks.contains_key(&key) || inner.get().writes.contains(&key)
+        })
+        .await
+    }
+
+    async fn is_lock_read(&self, path: &Path) -> bool {
+        let key = {
+            let mut hasher = DefaultHasher::new();
+            path.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        self.inner_call(|inner| async move { inner.get().r_locks.contains_key(&key) })
             .await
     }
 

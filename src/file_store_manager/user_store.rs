@@ -19,6 +19,9 @@ pub struct UserStore {
     // because the key has already been calculated
     // no need to recalculate to improve query efficiency
     writes: HashMap<u64, FileWriteHandle, NonHasherBuilder>,
+    // because the key has already been calculated
+    // no need to recalculate to improve query efficiency
+    reads: HashMap<u64, File, NonHasherBuilder>,
 }
 
 /// file write handle
@@ -33,6 +36,7 @@ impl UserStore {
         Actor::new(UserStore {
             root,
             writes: HashMap::with_hasher(NonHasherBuilder),
+            reads: HashMap::with_hasher(NonHasherBuilder),
         })
     }
 
@@ -223,7 +227,7 @@ impl UserStore {
         FILE_STORE_MANAGER
             .get()
             .unwrap()
-            .lock(&paths, session_id)
+            .lock_write(&paths, session_id)
             .await?;
 
         Ok((true, Cow::Borrowed("success")))
@@ -308,10 +312,15 @@ impl UserStore {
             bail!("file path illegal:{} not include root", file.display())
         }
 
+        //Because locking the written file to calculate hash is meaningless
+        let lock_w = FILE_STORE_MANAGER.get().unwrap().is_lock_write(&path).await;
+
+        let lock_r = FILE_STORE_MANAGER.get().unwrap().is_lock_read(&path).await;
+
         let metadata = path.metadata()?;
 
         let c_hash = {
-            if blake3 {
+            if blake3 && !lock_w {
                 let mut sha = blake3::Hasher::new();
                 let mut data = vec![0; 512 * 1024];
                 let mut file = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
@@ -329,7 +338,7 @@ impl UserStore {
         };
 
         let sha256 = {
-            if sha256 {
+            if sha256 && !lock_w {
                 use sha2::{Digest, Sha256};
                 let mut sha = Sha256::default();
                 let mut data = vec![0; 512 * 1024];
@@ -353,7 +362,55 @@ impl UserStore {
             create_time: metadata.created()?,
             b3: c_hash,
             sha256,
+            can_modify: !(lock_w || lock_r),
         })
+    }
+
+    #[inline]
+    async fn create_pull(&mut self, file: PathBuf, session_id: i64) -> anyhow::Result<u64> {
+        let path = self.root.join(&file);
+
+        let path = if path.exists() {
+            path.absolutize()?.to_path_buf()
+        } else {
+            bail!("file:{} not found", file.display());
+        };
+
+        ensure!(path.is_file(), "path:{} not is file", file.display());
+
+        let path = remove_prefix(path.absolutize()?.to_path_buf())?;
+
+        let fd = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
+
+        let key = FILE_STORE_MANAGER
+            .get()
+            .unwrap()
+            .create_read_key(&path, session_id)
+            .await?;
+
+        self.reads.entry(key).or_insert(fd);
+
+        Ok(key)
+    }
+
+    #[inline]
+    async fn finish_read_key(&mut self, key: u64, session_id: i64) {
+        self.reads.remove(&key);
+        FILE_STORE_MANAGER
+            .get()
+            .unwrap()
+            .finish_read_key(key, session_id)
+            .await
+    }
+
+    #[inline]
+    async fn get_read_file_fd(&self, key: u64) -> anyhow::Result<File> {
+        Ok(self
+            .reads
+            .get(&key)
+            .with_context(|| format!("not found fd from:{key}"))?
+            .try_clone()
+            .await?)
     }
 }
 
@@ -418,6 +475,13 @@ pub trait IUserStore {
         blake3: bool,
         sha256: bool,
     ) -> anyhow::Result<FileInfo>;
+
+    /// create pull file key
+    async fn create_pull(&self, path: PathBuf, session_id: i64) -> anyhow::Result<u64>;
+    /// read file data
+    async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>>;
+    /// finish file read
+    async fn finish_read_key(&self, key: u64, session_id: i64);
 }
 
 #[async_trait::async_trait]
@@ -525,5 +589,30 @@ impl IUserStore for Actor<UserStore> {
         sha256: bool,
     ) -> anyhow::Result<FileInfo> {
         unsafe { self.deref_inner().get_file_info(path, blake3, sha256).await }
+    }
+    #[inline]
+    async fn create_pull(&self, path: PathBuf, session_id: i64) -> anyhow::Result<u64> {
+        self.inner_call(|inner| async move { inner.get_mut().create_pull(path, session_id).await })
+            .await
+    }
+
+    #[inline]
+    async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>> {
+        let mut fd = self
+            .inner_call(|inner| async move { inner.get().get_read_file_fd(key).await })
+            .await?;
+        fd.seek(SeekFrom::Start(offset)).await?;
+        let mut data = vec![0; block];
+        let len = fd.read(&mut data).await?;
+        data.truncate(len);
+        Ok(data)
+    }
+
+    #[inline]
+    async fn finish_read_key(&self, key: u64, session_id: i64) {
+        self.inner_call(
+            |inner| async move { inner.get_mut().finish_read_key(key, session_id).await },
+        )
+        .await
     }
 }

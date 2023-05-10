@@ -22,6 +22,7 @@ pub struct FileInfo {
     pub create_time: SystemTime,
     pub b3: Option<String>,
     pub sha256: Option<String>,
+    pub can_modify: bool,
 }
 
 #[build(FileStoreService)]
@@ -92,6 +93,19 @@ pub trait IFileStoreService {
         blake3: bool,
         sha256: bool,
     ) -> anyhow::Result<FileInfo>;
+
+    /// create pull file
+    /// return pull file key
+    #[tag(1009)]
+    async fn create_pull(&self, path: PathBuf) -> anyhow::Result<u64>;
+
+    /// read data
+    #[tag(1010)]
+    async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>>;
+
+    /// finish write key
+    #[tag(1012)]
+    async fn finish_read_key(&self, key: u64);
 }
 
 pub struct FileStoreService {
@@ -200,6 +214,25 @@ impl IFileStoreService for FileStoreService {
         sha256: bool,
     ) -> anyhow::Result<FileInfo> {
         self.file_store.get_file_info(path, blake3, sha256).await
+    }
+
+    #[inline]
+    async fn create_pull(&self, path: PathBuf) -> anyhow::Result<u64> {
+        self.file_store
+            .create_pull(path, self.token.get_session_id())
+            .await
+    }
+
+    #[inline]
+    async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>> {
+        self.file_store.read(key, offset, block).await
+    }
+
+    #[inline]
+    async fn finish_read_key(&self, key: u64) {
+        self.file_store
+            .finish_read_key(key, self.token.get_session_id())
+            .await
     }
 }
 
