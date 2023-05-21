@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+#### Features
+* add async pull
+
 ## 0.2.0
 #### Features
 * add pull command

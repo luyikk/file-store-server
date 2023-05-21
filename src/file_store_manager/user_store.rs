@@ -480,6 +480,8 @@ pub trait IUserStore {
     async fn create_pull(&self, path: PathBuf, session_id: i64) -> anyhow::Result<u64>;
     /// read file data
     async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>>;
+    /// get read fd
+    async fn get_read_fd(&self, key: u64) -> anyhow::Result<File>;
     /// finish file read
     async fn finish_read_key(&self, key: u64, session_id: i64);
 }
@@ -606,6 +608,12 @@ impl IUserStore for Actor<UserStore> {
         let len = fd.read(&mut data).await?;
         data.truncate(len);
         Ok(data)
+    }
+
+    #[inline]
+    async fn get_read_fd(&self, key: u64) -> anyhow::Result<File> {
+        self.inner_call(|inner| async move { inner.get().get_read_file_fd(key).await })
+            .await
     }
 
     #[inline]

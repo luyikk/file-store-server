@@ -1,10 +1,15 @@
+mod client_controller;
+
 use crate::file_store_manager::{IFileStoreManager, IUserStore, UserStore, FILE_STORE_MANAGER};
+use client_controller::*;
 use netxserver::prelude::{tcpserver::IPeer, *};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Entry {
@@ -103,6 +108,10 @@ pub trait IFileStoreService {
     #[tag(1010)]
     async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>>;
 
+    /// start async read
+    #[tag(1011)]
+    async fn async_read(&self, key: u64, block: usize);
+
     /// finish write key
     #[tag(1012)]
     async fn finish_read_key(&self, key: u64);
@@ -117,7 +126,7 @@ pub struct FileStoreService {
 impl IFileStoreService for FileStoreService {
     #[inline]
     async fn connect(&self) -> anyhow::Result<()> {
-        if let Some(weak) = self.token.get_peer().await? {
+        if let Some(weak) = self.token.get_peer().await {
             if let Some(peer) = weak.upgrade() {
                 log::info!(
                     "client addr:{} session {} connect",
@@ -131,7 +140,7 @@ impl IFileStoreService for FileStoreService {
 
     #[inline]
     async fn disconnect(&self) -> anyhow::Result<()> {
-        if let Some(weak) = self.token.get_peer().await? {
+        if let Some(weak) = self.token.get_peer().await {
             if let Some(peer) = weak.upgrade() {
                 log::info!(
                     "client addr:{} session {} disconnect",
@@ -226,6 +235,32 @@ impl IFileStoreService for FileStoreService {
     #[inline]
     async fn read(&self, key: u64, offset: u64, block: usize) -> anyhow::Result<Vec<u8>> {
         self.file_store.read(key, offset, block).await
+    }
+
+    /// start async read
+    #[tag(1011)]
+    async fn async_read(&self, key: u64, block: usize) {
+        match self.file_store.get_read_fd(key).await {
+            Ok(mut fd) => {
+                if let Err(err) = fd.seek(SeekFrom::Start(0)).await {
+                    log::error!("fd.seek error:{}", err);
+                    return;
+                }
+                let client = impl_ref!(self.token=>IClientController);
+                let mut data = vec![0; block];
+                let mut offset = 0;
+                while let Ok(size) = fd.read(&mut data).await {
+                    if size > 0 && !self.token.is_disconnect().await {
+                        client.write_file_by_key(key, offset, &data[0..size]).await;
+                        offset += size as u64;
+                    } else {
+                        break;
+                    }
+                }
+                log::debug!("async read key:{key} finish");
+            }
+            Err(err) => log::error!("get fd error:{}", err),
+        }
     }
 
     #[inline]

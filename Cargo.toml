@@ -1,6 +1,6 @@
 [package]
 name = "fss"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["luyi <luyikk@126.com>"]
 license = "MIT/Apache-2.0"
@@ -23,7 +23,7 @@ log = "0.4"
 flexi_logger = { version = "0.25", features = ["async"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.7"
-netxserver = { version = "1.9", features = ["use_rustls", "dserde"] }
+netxserver = { version = "1.10", features = ["use_rustls", "dserde"] }
 async-trait = "0.1"
 tokio-rustls = "0.24"
 rustls-pemfile = "1"
