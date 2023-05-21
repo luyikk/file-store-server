@@ -237,8 +237,7 @@ impl IFileStoreService for FileStoreService {
         self.file_store.read(key, offset, block).await
     }
 
-    /// start async read
-    #[tag(1011)]
+    #[inline]
     async fn async_read(&self, key: u64, block: usize) {
         match self.file_store.get_read_fd(key).await {
             Ok(mut fd) => {
