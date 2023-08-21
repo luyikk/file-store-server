@@ -1,6 +1,6 @@
 [package]
 name = "fss"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["luyi <luyikk@126.com>"]
 license = "MIT/Apache-2.0"

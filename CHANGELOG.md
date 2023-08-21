@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+#### Features
+* add custom service name
+
 ## 0.2.1
 #### Features
 * add async pull
