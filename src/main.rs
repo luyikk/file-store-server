@@ -11,11 +11,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
+
 use tokio_rustls::rustls::server::AllowAnyAuthenticatedClient;
 use tokio_rustls::rustls::{Certificate, PrivateKey, RootCertStore, ServerConfig};
 use tokio_rustls::TlsAcceptor;
-
-const SERVICE_LIABLE: &str = "file.store.service";
 
 #[cfg(unix)]
 #[tokio::main]

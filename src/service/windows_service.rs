@@ -1,3 +1,4 @@
+use crate::service::config::Config;
 use std::ffi::OsString;
 use std::io;
 use std::path::PathBuf;
@@ -14,13 +15,13 @@ use windows_service::{
 
 pub static CONFIG_FILE: tokio::sync::OnceCell<PathBuf> = tokio::sync::OnceCell::const_new();
 
-const SERVICE_NAME: &str = crate::SERVICE_LIABLE;
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 pub fn run(config_file: PathBuf) -> anyhow::Result<()> {
     CONFIG_FILE.set(config_file.clone())?;
+    let service_name = Config::try_from(config_file.clone())?.service.service_name;
     if let Err(err) =
-        service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|err| match err {
+        service_dispatcher::start(service_name, ffi_service_main).map_err(|err| match err {
             windows_service::Error::Winapi(err) => err,
             err => io::Error::new(io::ErrorKind::Other, err),
         })
@@ -45,7 +46,11 @@ pub fn service_main(arguments: Vec<OsString>) {
 }
 
 fn run_service() -> Result<()> {
-    log::info!("Starting windows service for {SERVICE_NAME}");
+    let service_name = &Config::try_from(CONFIG_FILE.get().unwrap().clone())
+        .unwrap()
+        .service
+        .service_name;
+    log::info!("Starting windows service for {service_name}");
 
     // Create a channel to be able to poll a stop event from the service worker loop.
     let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
@@ -70,11 +75,11 @@ fn run_service() -> Result<()> {
         }
     };
 
-    log::info!("Registering service control handler for {SERVICE_NAME}");
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+    log::info!("Registering service control handler for {service_name}");
+    let status_handle = service_control_handler::register(service_name, event_handler)?;
 
     // Tell the system that service is running
-    log::info!("Setting service status as running for {SERVICE_NAME}");
+    log::info!("Setting service status as running for {service_name}");
 
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
@@ -86,7 +91,7 @@ fn run_service() -> Result<()> {
         process_id: None,
     })?;
 
-    log::info!("Spawning CLI thread for {SERVICE_NAME}");
+    log::info!("Spawning CLI thread for {service_name}");
 
     std::thread::spawn(|| {
         if let Err(err) = start(CONFIG_FILE.get().unwrap().clone()) {
@@ -105,7 +110,7 @@ fn run_service() -> Result<()> {
     }
 
     // Tell the system that service has stopped.
-    log::info!("Setting service status as stopped for {SERVICE_NAME}");
+    log::info!("Setting service status as stopped for {service_name}");
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Stopped,

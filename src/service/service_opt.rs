@@ -1,4 +1,4 @@
-use crate::SERVICE_LIABLE;
+use crate::service::config::Config;
 use clap::{Parser, Subcommand};
 use service_manager::*;
 use std::ffi::OsString;
@@ -24,7 +24,11 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
             Ok(None)
         }
         OptArgs::Service(ServiceArgs::Install { config }) => {
-            let label: ServiceLabel = SERVICE_LIABLE.parse().unwrap();
+            let label: ServiceLabel = Config::try_from(PathBuf::from(&config))?
+                .service
+                .service_name
+                .parse()
+                .unwrap();
             let manager = <dyn ServiceManager>::native()?;
             manager
                 .install(ServiceInstallCtx {
@@ -36,8 +40,12 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
             println!("service install success");
             Ok(None)
         }
-        OptArgs::Service(ServiceArgs::Uninstall) => {
-            let label: ServiceLabel = SERVICE_LIABLE.parse().unwrap();
+        OptArgs::Service(ServiceArgs::Uninstall { config }) => {
+            let label: ServiceLabel = Config::try_from(PathBuf::from(&config))?
+                .service
+                .service_name
+                .parse()
+                .unwrap();
             let manager = <dyn ServiceManager>::native()?;
             manager
                 .uninstall(ServiceUninstallCtx { label })
@@ -45,8 +53,12 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
             println!("service uninstall success");
             Ok(None)
         }
-        OptArgs::Service(ServiceArgs::Start) => {
-            let label: ServiceLabel = SERVICE_LIABLE.parse().unwrap();
+        OptArgs::Service(ServiceArgs::Start { config }) => {
+            let label: ServiceLabel = Config::try_from(PathBuf::from(&config))?
+                .service
+                .service_name
+                .parse()
+                .unwrap();
             let manager = <dyn ServiceManager>::native()?;
             manager
                 .start(ServiceStartCtx { label })
@@ -54,8 +66,12 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
             println!("service start success");
             Ok(None)
         }
-        OptArgs::Service(ServiceArgs::Stop) => {
-            let label: ServiceLabel = SERVICE_LIABLE.parse().unwrap();
+        OptArgs::Service(ServiceArgs::Stop { config }) => {
+            let label: ServiceLabel = Config::try_from(PathBuf::from(&config))?
+                .service
+                .service_name
+                .parse()
+                .unwrap();
             let manager = <dyn ServiceManager>::native()?;
             manager
                 .stop(ServiceStopCtx { label })
@@ -63,8 +79,12 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
             println!("service stop success");
             Ok(None)
         }
-        OptArgs::Service(ServiceArgs::Restart) => {
-            let label: ServiceLabel = SERVICE_LIABLE.parse().unwrap();
+        OptArgs::Service(ServiceArgs::Restart { config }) => {
+            let label: ServiceLabel = Config::try_from(PathBuf::from(&config))?
+                .service
+                .service_name
+                .parse()
+                .unwrap();
             let manager = <dyn ServiceManager>::native()?;
 
             manager
@@ -84,7 +104,7 @@ pub fn service() -> anyhow::Result<Option<PathBuf>> {
 }
 
 #[derive(Parser)]
-#[clap(name = SERVICE_LIABLE,version)]
+#[clap(name = "fss service", version)]
 enum OptArgs {
     /// run service
     Exec {
@@ -111,11 +131,23 @@ enum ServiceArgs {
         config: String,
     },
     /// start service
-    Start,
+    Start {
+        #[arg(value_parser, default_value = "config")]
+        config: String,
+    },
     /// stop service
-    Stop,
+    Stop {
+        #[arg(value_parser, default_value = "config")]
+        config: String,
+    },
     /// restart service
-    Restart,
+    Restart {
+        #[arg(value_parser, default_value = "config")]
+        config: String,
+    },
     /// uninstall service to system
-    Uninstall,
+    Uninstall {
+        #[arg(value_parser, default_value = "config")]
+        config: String,
+    },
 }
