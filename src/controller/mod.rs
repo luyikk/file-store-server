@@ -239,12 +239,14 @@ impl IFileStoreService for FileStoreService {
 
     #[inline]
     async fn async_read(&self, key: u64, block: usize) {
+        log::debug!("start async send file:{key} block:{block}");
         match self.file_store.get_read_fd(key).await {
             Ok(mut fd) => {
                 if let Err(err) = fd.seek(SeekFrom::Start(0)).await {
                     log::error!("fd.seek error:{}", err);
                     return;
                 }
+                log::debug!("read file:{key} fd ok");
                 let client = impl_ref!(self.token=>IClientController);
                 let mut data = vec![0; block];
                 let mut offset = 0;
