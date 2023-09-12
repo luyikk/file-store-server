@@ -369,7 +369,6 @@ impl UserStore {
     #[inline]
     async fn create_pull(&mut self, file: PathBuf, session_id: i64) -> anyhow::Result<u64> {
         let path = self.root.join(&file);
-
         let path = if path.exists() {
             path.absolutize()?.to_path_buf()
         } else {
@@ -379,6 +378,8 @@ impl UserStore {
         ensure!(path.is_file(), "path:{} not is file", file.display());
 
         let path = remove_prefix(path.absolutize()?.to_path_buf())?;
+
+        log::debug!("start pull file:{}", path.display());
 
         let fd = tokio::fs::OpenOptions::new().read(true).open(&path).await?;
 
