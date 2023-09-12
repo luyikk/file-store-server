@@ -33,6 +33,11 @@ pub fn install_logger() -> anyhow::Result<()> {
         .write_mode(WriteMode::Async)
         .start()?;
 
+    #[cfg(not(debug_assertions))]
+    logger.set_new_spec(flexi_logger::LogSpecification::parse(
+        "debug, mio=error, rustls=debug",
+    )?);
+
     LOGGER_HANDLER
         .set(logger)
         .map_err(|_| anyhow::anyhow!("logger set error"))?;
