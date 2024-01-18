@@ -439,7 +439,6 @@ pub fn remove_prefix(path: PathBuf) -> anyhow::Result<PathBuf> {
     }
 }
 
-
 pub(crate) trait IUserStore {
     /// create push file
     async fn push(
@@ -486,7 +485,6 @@ pub(crate) trait IUserStore {
     /// finish file read
     async fn finish_read_key(&self, key: u64, session_id: i64);
 }
-
 
 impl IUserStore for Actor<UserStore> {
     #[inline]

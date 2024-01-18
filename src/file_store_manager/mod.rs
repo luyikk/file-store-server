@@ -124,10 +124,7 @@ impl FileStoreManager {
             hasher.finish()
         };
 
-        self.r_locks
-            .entry(key)
-            .or_default()
-            .insert(session_id);
+        self.r_locks.entry(key).or_default().insert(session_id);
 
         Ok(key)
     }
@@ -189,7 +186,6 @@ impl FileStoreManager {
     }
 }
 
-
 pub(crate) trait IFileStoreManager {
     /// create new store
     fn new_user_store(&self) -> Actor<UserStore>;
@@ -210,7 +206,6 @@ pub(crate) trait IFileStoreManager {
     /// clear user lock files
     async fn clear_lock(&self, session_id: i64);
 }
-
 
 impl IFileStoreManager for Actor<FileStoreManager> {
     fn new_user_store(&self) -> Actor<UserStore> {
