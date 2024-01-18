@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+#### Features
+republish
+
 ## 0.3.0
 #### Features
 update to netx 2
