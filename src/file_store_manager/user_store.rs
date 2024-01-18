@@ -439,8 +439,8 @@ pub fn remove_prefix(path: PathBuf) -> anyhow::Result<PathBuf> {
     }
 }
 
-#[async_trait::async_trait]
-pub trait IUserStore {
+
+pub(crate) trait IUserStore {
     /// create push file
     async fn push(
         &self,
@@ -487,7 +487,7 @@ pub trait IUserStore {
     async fn finish_read_key(&self, key: u64, session_id: i64);
 }
 
-#[async_trait::async_trait]
+
 impl IUserStore for Actor<UserStore> {
     #[inline]
     async fn push(

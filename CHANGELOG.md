@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+#### Features
+update to netx 2
+remove async-trait
+
 ## 0.2.2
 #### Features
 * add custom service name

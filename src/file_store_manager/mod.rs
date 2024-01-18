@@ -126,7 +126,7 @@ impl FileStoreManager {
 
         self.r_locks
             .entry(key)
-            .or_insert(HashSet::new())
+            .or_default()
             .insert(session_id);
 
         Ok(key)
@@ -189,8 +189,8 @@ impl FileStoreManager {
     }
 }
 
-#[async_trait::async_trait]
-pub trait IFileStoreManager {
+
+pub(crate) trait IFileStoreManager {
     /// create new store
     fn new_user_store(&self) -> Actor<UserStore>;
     /// create file write key
@@ -211,7 +211,7 @@ pub trait IFileStoreManager {
     async fn clear_lock(&self, session_id: i64);
 }
 
-#[async_trait::async_trait]
+
 impl IFileStoreManager for Actor<FileStoreManager> {
     fn new_user_store(&self) -> Actor<UserStore> {
         unsafe { self.deref_inner().new_user_store() }
